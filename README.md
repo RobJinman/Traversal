@@ -14,5 +14,5 @@ Traversal will offer an interesting browsing experience, presenting to the reade
 
 In addition, the dataset that Traversal generates will be of sociological value.
 
-[Link to technical document](doc/traversal.html)
+[Link to technical document](https://robjinman.github.io/traversal)
 
