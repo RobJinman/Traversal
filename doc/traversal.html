@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:m="http://www.w3.org/1998/Math/MathML">
+  <head>
+    <meta charset="UTF-8"/>
+    <script type="text/x-mathjax-config">
+    //<![CDATA[
+      MathJax.Hub.Config({
+          jax: ["input/TeX","output/HTML-CSS"],
+          displayAlign: "left"
+      });
+    //]]>
+    </script>
+    <script type='text/javascript' src='https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML'></script><!--
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Config({
+        extensions: ["tex2jax.js"],
+        jax: ["input/TeX","output/HTML-CSS"],
+        tex2jax: {inlineMath: [["$","$"],["\\(","\\)"]]},
+        displayAlign: "left"
+      });
+    </script>
+    <script type="text/javascript" src="/home/rob/mathjax-MathJax-78ea6af/MathJax.js"/>-->
+    <style>
+    <![CDATA[
+      .u { text-decoration: underline; }
+    ]]>
+    </style>
+    <title>Traversal Technical Document</title>
+  </head>
+  <body style="text-align: justify; width: 700px; margin-left: auto; margin-right: auto; font-size: 0.9em;">
+    <h1>Traversal Technical Document</h1>
+
+    <h2>Contents</h2>
+    <ul>
+      <li><a href="#Overview">Overview</a></li>
+      <li><a href="#Definitions">Definitions</a></li>
+      <li><a href="#ProblemDiscussion">Problem Discussion</a></li>
+      <li><a href="#TreeSimilarity">Tree-Tree Similarity</a></li>
+      <li>
+        <a href="#LeafSimilarity">Leaf-Leaf Similarity</a>
+        <ul>
+          <li><a href="#LeafSimilarityJargon">Some Jargon</a></li>
+        </ul>
+      </li>
+      <li><a href="#UserConsistency">Measuring User Consistency</a></li>
+      <li>
+        <a href="#Algorithm">Algorithm</a>
+        <ul>
+          <li><a href="#AlgorithmParameters">Parameters</a></li>
+          <li><a href="#AlgorithmDataStructures">Data Structures</a></li>
+          <li><a href="#AlgorithmDefinitions">Definitions</a></li>
+          <li><a href="#AlgorithmProcedure">Procedure</a></li>
+          <li><a href="#AlgorithmExample">Example</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="#Analysis">Analysis</a>
+        <ul>
+            <li><a href="#AnalysisTrafficModelling">Traffic Modelling</a></li>
+            <li><a href="#AnalysisConvergenceTesting">Convergence Testing</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="#Implementation">Implementation</a>
+        <ul>
+          <li><a href="#ImplementationRelationalModel">Relational Model</a></li>
+        </ul>
+      </li>
+    </ul>
+    <h2 id="Overview">Overview</h2>
+    <p>Traversal is a website allowing users to design textual and graphical information slides containing questions and multiple choice answers. The user then arranges the slides into a decision tree, which upon submission is assigned a unique URL and an HTML snippet for embedding on forums and other websites. Typical uses might include quizzes, diagnostic tools, FAQs, troubleshooting guides, polls and surveys, etc. The primary rationale for this project however came from the observation that to make a persuasive argument&#8212;whether it's in politics, economics, philosophy, etc.&#8212;it helps to tailor one's statements according to the subject's existing beliefs and how they react to what has been said already. A decision tree therefore seems like a good way of arranging a series of arguments to make a persuasive case. This alone would be a reasonably worthwhile project, but it get's more interesting.</p>
+
+<p>Trees may be linked together into a large directed graph so that when a user reaches the end of one tree they are seamlessly transported to the root of another. What could be the rule that determines how trees are connected? One interesting possibility is to connect to a leaf the tree that is most persuasive against the position represented by the leaf. This could be the tree that is statistically most likely to result in the user landing on a different leaf should they traverse the same tree again. One approach might be as follows: For all users that have traversed a tree \(t\) twice, landing on leaf \(l\) the first time and some other leaf the second time, find the set of trees that were visited between the two traversals that might have influenced the user to change their answers. The most influential tree is the one we attach to leaf \(l\). It's dubious whether this would result in a desired graph, as people tend not to change their minds often and when they do it's unlikely to be a result of browsing the website, thus a tree's mind-changing effect will likely be statistically small and hard to detect without a large sample size.</p>
+
+    <p>Moreover, the following constraints add considerably to the difficulty of the problem:</p>
+    <ol>
+      <li>The user must not be prompted (nor expected) to repeat a traversal.</li>
+      <li>The user must not be asked to rate, 'like', or vote up any tree.</li>
+    </ol>
+    <p>These constraints were chosen with the end user experience in mind. The first point means that it will not be possible to directly measure the probability of a user's traversal being altered by another tree. Much of this document therefore discusses the problem of designing some reasonable way of approximating this hypothetical value well enough to yield a desirable result. First, some definitions.</p>
+    <h2 id="Definitions">Definitions</h2>
+    <table>
+      <tbody><tr>
+        <td>\(u\)</td><td>User</td>
+      </tr>
+      <tr>
+        <td>\(U\)</td><td>Set of all users.</td>
+      </tr>
+      <tr>
+        <td>\(n\)</td><td>Node</td>
+      </tr>
+      <tr>
+        <td>\(N\)</td><td>Set of all nodes.</td>
+      </tr>
+      <tr>
+        <td>\(t =\{n_0, n_1, ..., n_k\}\)</td><td>Tree</td>
+      </tr>
+      <tr>
+        <td>\(T\)</td><td>Set of all trees.</td>
+      </tr>
+      <tr>
+        <td>\(leaves(t) \subset t\)</td><td>The leaves of tree \(t\).</td>
+      </tr>
+      <tr>
+        <td>\(L := \{l : \exists t \in T \wedge l \in leaves(t)\}\)</td><td>Set of all leaf nodes.</td>
+      </tr>
+      <tr>
+        <td>\(tree(n)\)</td><td>The tree to which node \(n\) belongs.</td>
+      </tr>
+      <tr>
+        <td>\(children(t)_l\)</td><td>Child tree connected to leaf node \(l \in t\).</td>
+      </tr>
+      <tr>
+        <td>\(parents(t):=\{p : p \in T \wedge t\in children(p)\}\)</td><td>Set of parent trees of \(t\).</td>
+      </tr>
+      <tr>
+        <td>\(Tr(t, u)=l\)</td><td>Traversal of tree \(t\) by user \(u\) ending at leaf node \(l\).</td>
+      </tr>
+      <tr>
+        <td>\(s=\langle u, t, l \rangle = \langle u, t, Tr(t, u) \rangle\)</td><td>Traversal of tree \(t\) by user \(u\) ending at leaf node \(l\).</td>
+      </tr>
+      <tr>
+        <td>\(S\)</td><td>List of ALL traversals.</td>
+      </tr>
+      <tr>
+        <td>\(S_{u=u} := \langle s : s \in S \wedge s.u = u \rangle\)</td><td>List of all traversals by user \(u\).</td>
+      </tr>
+      <tr>
+        <td>\(S_{t=t}:=\langle s : s \in S \wedge s.t = t \rangle\)</td><td>List of all traversals of tree \(t\).</td>
+      </tr>
+      <tr>
+        <td>\(S_{l=l}:=\langle s : s \in S \wedge s.l = l \rangle\)</td><td>List of all traversals resulting in node \(l\).</td>
+      </tr>
+      <tr>
+        <td>\(S_{t=t, u=u} := \langle s : s \in S \wedge s.t = t \wedge s.u = u \rangle\)</td><td>List of all traversals of tree \(t\) by user \(u\).</td>
+      </tr>
+      <tr>
+        <td>\(T_u := \langle s.t : s \in S_{u=u} \rangle\)</td><td>List of all trees traversed by user \(u\).</td>
+      </tr>
+      <tr>
+        <td>\(L_u := \langle s.l : s \in S_{u=u} \rangle\)</td><td>List of all leaves user \(u\) landed on.</td>
+      </tr>
+      <tr>
+        <td>\(D_u := \langle children(s.t)_{s.l} : s \in S_{u=u} \rangle\)</td><td>List of all trees user \(u\) traversed into.</td>
+      </tr></tbody>
+    </table>
+
+    <h2 id="ProblemDiscussion">Problem Discussion</h2>
+
+    <p>Imagine that constraint 1 above was lifted allowing us the option of testing the same user on the same tree at some time in the future to see whether they land on a different leaf the second time around. With enough users we can then calculate the likelihood that traversing a particular tree \(d\) will change a user's traversal of another tree \(t\) (away from a given leaf \(l \in t\)) and assign it a score on this basis. The tree with the highest score can then be attached to \(l\).</p>
+
+    <p>Given a pair of traversals by the same user on the same tree, with other traversals intervening:</p>
+
+    <p>\(T_u= \langle ..., t_x \rangle \cup T_{u, l_i\rightarrow l_j} \cup \langle t_x, ... \rangle\)</p>
+
+    <p>where \(l_i, l_j \in t_x\) and \(T_{u, l_i \rightarrow l_j}\) is the list of trees traversed by \(u\) between the two traversals in question.</p>
+
+    <p><b>if</b> \(l_i \neq l_j\)<br/>
+    &#xA0;&#xA0;&#xA0;&#xA0;\(J_{l_i} \leftarrow \{(t, J_{l_i}(t) + 1) : t \in T_{u, l_i \rightarrow l_j}\}\)<br/>
+    <b>else</b><br/>
+    &#xA0;&#xA0;&#xA0;&#xA0;\(K_{l_i} \leftarrow \{(t, K_{l_i}(t) + 1) : t \in T_{u, l_i \rightarrow l_j}\}\)
+    </p>
+
+    <p>where \(J_{l_i}\) and \(K_{l_i}\) are maps containing the score for each tree. This is repeated for each user.</p>
+    <p>In words, the intervening trees have their scores incremented in \(J_{l_i}\) if they contribute to the user landing on a different leaf, whereas their score is incremented in \(K_{l_i}\) if the user landed on the same leaf. The function \(g\) combines these data as follows:</p>
+
+    <p>\(g : L \times T \rightarrow \{x : x \in \mathbb{R} \wedge -1 \leq x \leq 1\}\)<br/>
+    \[g(l, t) := \frac{J_l(t) - K_l(t)}{J_l(t) + K_l(t)}\]</p>
+
+    <p>We may introduce other parameters later, but for now the final score is simply</p>
+    <p>\(score(l, t) := g(l, t)\)</p>
+
+    <p>We thus attach to leaf \(l\) the tree \(t\) with the highest score.</p>
+
+    <p>Now, taking into account constraint 1, things become rather more complicated.</p>
+
+    <p>Each leaf represents a particular opinion on the subject matter to which the tree pertains. We need a way of comparing leaves from different trees to find how well the opinions they represent match. See below the secton titled <a href="#LeafSimilarity">Leaf-Leaf Similarity</a>.</p>
+
+    <p>Given a pair of traversals by the same user on <em>similar</em> trees, with other traversals intervening:</p>
+
+    <p>\(T_u= \langle ..., t_i \rangle \cup T_{u, l_i\rightarrow l_j} \cup \langle t_j, ... \rangle\)</p>
+
+    <p>where \(l_i \in t_i \wedge l_j \in t_j\).</p>
+
+    <p>As before:</p>
+
+    <p><b>if</b> \(l_i \not\sim l_j\)<br/>
+    &#xA0;&#xA0;&#xA0;&#xA0;\(J_{l_i} \leftarrow \{(t, J_{l_i}(t) + 1) : t \in T_{u, l_i \rightarrow l_j}\}\)<br/>
+    <b>else</b><br/>
+    &#xA0;&#xA0;&#xA0;&#xA0;\(K_{l_i} \leftarrow \{(t, K_{l_i}(t) + 1) : t \in T_{u, l_i \rightarrow l_j}\}\)
+    </p>
+
+    <p>Remember that essentially what we're trying to do is track all users' paths through the graph while looking for gradual changes in belief over time. Then, by examining the list of trees visited by each user we can score each tree according to how influential it is, and attach to each leaf \(l\) the tree that appears most responsible for persuading people away from \(l\) and its ideological neighbours.</p>
+
+    <p>The method described thus far ensures that trees that are popular among users who change their minds often will be given higher scores than trees that are popular among users who maintain consistent beliefs. This is not desirable. The algorithm should therefore be modified so that users who are consistent have more influence on the structure of the graph than those who are inconsistent. We therefore need to devise a measure of user consistency. Then, instead of adding \(1\) to \(J_l\) and \(K_l\) we add \(c(u)\).</p>
+
+    <p>\(c : U \rightarrow \{x : x \in \mathbb{R} \wedge 0 \leq x \leq 1\}\)</p>
+
+    <h2 id="TreeSimilarity">Tree-Tree Similarity Metric</h2>
+
+    <p>When a user submits a tree they provide a set of one-word tags \(W_t\).</p>
+
+    <h2 id="LeafSimilarity">Leaf-Leaf Similarity</h2>
+
+    <h3 id="LeafSimilarityJargon">Some Jargon</h3>
+
+    <ul>
+      <li><b><em>Siblings of \(l\)</em></b> &#8211; Other leaves from \(tree(l)\).
+      \[siblings(l) := leaves\big(tree(l)\big) \setminus \{l\}\]
+      </li>
+      <li><b><em>Semantic relatives of \(l\)</em></b> &#8211; All leaves from trees that are similar to \(tree(l)\).
+      \[R_l := \{k : \exists t \in T \wedge k \in t \wedge t \sim tree(l)\}\]
+      </li>
+      <li><b><em>Semantic neighbours of \(l\)</em></b> &#8211; Set of leaves similar to \(l\).
+      \[L_{l\sim} := \{k : k \in R_l \wedge k \sim l\}\]
+      </li>
+      <li><b><em>Semantic anti-neighbours of \(l\)</em></b> &#8211; Set of leaves dissimilar to \(l\).
+      \[L_{l\not\sim} := \{k : k \in R_l \wedge k \not\sim l\}\]
+      </li>
+    </ul>
+
+    <p>We construct a histogram \(H_{l,t}\) to count the hits on each leaf of \(t\) among users who at an earlier time landed on \(l \not\in t\).</p>
+
+    <p>\(U_l := \{s.u:s \in S_{l=l}\}\)<br/>
+    \(H_{l, t} \leftarrow \langle s.l : s \in S \wedge s.u \in (U_l \cap U_{t}) \wedge s.t = t \rangle\)</p>
+
+    <p>\[|H_{l,t}| := \sum\limits_{k\in leaves(t)} H_{l,t}(k)\]</p>
+
+    <p>\[avr(H_{l,t}) := \frac{|H_{l,t}|}{\big|leaves(t)\big|}\]</p>
+
+    <p>Our similarity metric is then as follows (higher is more similar).</p>
+
+    <p>\(d_{leaf}(l_x, l_y) := H_{l_x, tree(l_y)}(l_y) \cdot avr(H_{l_x, tree(l_y)})^{-1}\)</p>
+
+    <p>Semantic relatives of \(l\) as a sorted list of pairs:</p>
+
+    <p>\(\hat{R_l} := sort_{p_1, desc}\Big(\big\langle \big(p_0, p_1\big) := \big(k, d_{leaf}(l, k)\big) : k \in R_l\big\rangle\Big)\)</p>
+
+    <p>\(cap(L_{l\sim})\) most similar leaves to \(l\):</p>
+
+    <p>\(L_{l\sim} := \big\{\hat{R_l}[i]_0 : \big(0 \leq i \lt cap(L_{l\sim})\big) \wedge \hat{R_l}[i]_1 \geq 1.0\big\}\)</p>
+
+    <p>\(cap(L_{l\sim})\) least similar leaves to \(l\):</p>
+
+    <p>\(L_{l\not\sim} := \big\{\hat{R_l}[i]_0 : \big(|\hat{R_l}| - cap(L_{l\sim}) \leq i \lt |\hat{R_l}|\big) \wedge \hat{R_l}[i]_1 \lt 1.0\big\}\)</p>
+
+    <p>where \(cap(L_{l\sim})\) is some constant, such as \(100\). Then</p>
+
+    <p>\(l_x \sim l_y := l_y \in L_{l_x \sim}\)</p>
+
+    <p>\(l_x \not\sim l_y := l_y \in L_{l_x \not\sim}\)</p>
+
+    <p>Notice that \(!(l_x \sim l_y) \not\equiv l_x \not\sim l_y\) and vice versa. It is possible for two leaves to be neither similar nor dissimilar.</p>
+
+    <p>There's another odd quirk that's worth mentioning. Given the above definitions, our similarity relations are non-commutative. Let's say \(n\) users in total have landed on leaf \(l_x\) of tree \(t_x\), i.e. \(|U_{l_x}| = n\), and let's imagine that some \(m \leq n\) of these users traverse tree \(t_y\), whom we'll refer to as \(U_{l_x, t_y} := U_{l_x} \cap U_{t_y}\), where \(|U_{l_x, t_y}| = m\). Then, if the vast majority of \(U_{l_x, t_y}\) land on leaf \(l_y\) we can say \(l_x \sim l_y\). However, this does not necessarily mean that a large number of users who land on \(l_y\) will land on \(l_x\) should they traverse \(t_x\), as there may be many leaves in \(t_x\) that represent similar beliefs, spreading the users evenly among them. Thus \(l_x \sim l_y \not\Leftrightarrow l_y \sim l_x\). This is the desired behaviour and will not cause a problem, but it's worth mentioning to avoid confusion.</p>
+
+    <p>We define a <em>subscriber</em> of \(l\) as a user who has landed on \(l\) but not yet landed on any of its semantic anti-neighbours.</p>
+
+    <p>Subscribers of \(l\):
+    \[U_{sub(l)}:=U_l \setminus \{u : \exists k \in L_{u,l+} \wedge k\in L_{l\not\sim}\}\]
+    where \(L_{u,l+}\) is the list of leaves visited by \(u\) since their last visit to \(l\):
+    \[L_{u,l+} := \big\langle s.l : \exists a \in \mathbb{N} \wedge s \in (a, +\infty] \subset S_u \wedge S_u[a] = k \wedge S_u[a] \not\in [0, a) \subset S_u \big\rangle\]
+    </p>
+
+    <p>For each leaf \(l\) we maintain a map \(M_l\) that counts for each subscriber \(u \in U_{sub(l)}\) the number of hits on the leaf's semantic neighbours \(L_{l \sim}\) until the user lands on a semantic anti-neighbour \(\in L_{l\not\sim}\) whereupon the count is reset and the user is unsubscribed from \(l\). A user's score in this map therefore represents how firm a subscriber they are, and this (among other factors) will determine the size of the user's addition to \(J_l\) and \(K_l\) when they are incremented.</p>
+
+    <p>Firmness of subscription:
+    \[\hat M_l(u) := M_l(u) \cdot \Big(max_{v\in U_{sub(l)}}\big(M_l(v)\big)\Big)^{-1}\]</p>
+
+    <h2 id="UserConsistency">Measuring User Consistency</h2>
+
+    <p>The most inconsistent user would be one who causes \(J_l\) maps to be updated frequently and \(K_l\) maps to be updated infrequently, thus we need only to count the additions to \(J_l\) and \(K_l\) using a pair of counters \(\alpha_u, \beta_u\), respectively. Then,</p>
+
+    <p>\[c(u) := \frac{1}{2}\big(1+(\beta_u - \alpha_u)(\alpha_u + \beta_u)^{-1}\big)\]</p>
+    <p>\[c : U \rightarrow \{x : x \in \mathbb{R} \wedge 0 \leq x \leq 1\}\]</p>
+
+    <p>A value close to zero means that \(\beta_u\) is large relative to \(\alpha_u\) and the user is therefore consistent. However, we should scale this result down for users who have made few traversals. An ideal scaling function would be one that returns \(0\) for an input of \(0\), and which tends ever closer to \(1\) as its input grows, such as:</p>
+
+    <p>\[f(x) = 1-\gamma(x + \gamma)^{-1}\]</p>
+
+    <p>where the constant \(\gamma\) determines how quickly \(f\) approaches \(1\). The figures below show the output for values \(\gamma=50\) and \(\gamma=10\).</p>
+
+    <div style="float: left; width: 310px; border: thin silver solid; margin: 0.5em; margin: 0.5em 1.0em 1.5em 0.0em; padding: 0.5em;">
+      <p style="text-align: center; font-style: italic; font-size: smaller; text-indent: 0;">
+      <img src="chart1.png" width="280" alt="chart1.png"/>
+      <br/>\(f(x)=1-\gamma(x+\gamma)^{-1}, \gamma=50\)</p>
+    </div>
+
+    <div style="float: right; width: 310px; border: thin silver solid; margin: 0.5em; margin: 0.5em 1.0em 1.5em 0.0em; padding: 0.5em;">
+      <p style="text-align: center; font-style: italic; font-size: smaller; text-indent: 0;">
+      <img src="chart2.png" width="280" alt="chart2.png"/>
+      <br/>\(f(x)=1-\gamma(x+\gamma)^{-1}, \gamma=10\)</p>
+    </div>
+
+    <p>Thus, finally we have:</p>
+    <p>\[c(u) := \frac{1}{2}\big(1+(\beta_u - \alpha_u)(\alpha_u + \beta_u)^{-1}\big) \cdot \big(1-\gamma(|S_{u=u}| + \gamma)^{-1}\big)\]</p>
+
+    <h2 id="Algorithm">Algorithm</h2>
+
+    <h3 id="AlgorithmParameters">Parameters</h3>
+
+    <table>
+      <tbody>
+        <tr><td style="width: 100px;">\(\tau\)</td><td>Value of \(d_{tree}\) above which two trees may be considered similar.</td></tr>
+        <tr><td>\(cap(T_{t\sim})\)</td><td>Maximum length (capacity) of list \(T_{t\sim}\) for \(t\in T\).</td></tr>
+        <tr><td>\(\lambda_0\)</td><td>Value of \(d_{leaf}\) below which two leaves may be considered dissimilar.</td></tr>
+        <tr><td>\(\lambda_1\)</td><td>Value of \(d_{leaf}\) above which two leaves may be considered similar.</td></tr>
+        <tr><td>\(cap(L_{l\sim})\)</td><td>Maximum length of lists \(L_{l\sim}\) and \(L_{l\not\sim}\) for \(l\in L\).</td></tr>
+        <tr><td>\(\gamma\)</td><td>Factor that determines how quickly users become influential.</td></tr>
+      </tbody>
+    </table>
+
+    <h3 id="AlgorithmDataStructures">Data Structures</h3>
+
+    <p>For each leaf \(l\):</p>
+    <table>
+      <tbody>
+        <tr><td style="width: 200px;">\(J_l\)</td><td style="width: 170px;">Map of type \(T \rightarrow \mathbb{N}\).</td><td>Logs hits on intervening trees when a subscriber of \(l\) deviates from the crowd (and thereby unsubscribes).</td></tr>
+        <tr><td>\(K_l\)</td><td>Map of type \(T \rightarrow \mathbb{N}\).</td><td>Logs hits on intervening trees when a subscriber of \(l\) sticks with the crowd.</td></tr>
+        <tr><td>\(\{H_{l,t} : t \in T_{tree(l)\sim}\}\)</td><td>Set of maps of type \(L \rightarrow \mathbb{N}\).</td><td>Histograms that log hits made by subscribers of \(l\) on similar trees.</td></tr>
+        <tr><td>\(L_{l\sim}\)</td><td>List of leaves.</td><td>Semantic neighbours of \(l\)&#8212;list of leaves representing similar beliefs.</td></tr>
+        <tr><td>\(L_{l\not\sim}\)</td><td>List of leaves.</td><td>Semantic anti-neighbours of \(l\)&#8212;list of leaves representing dissimilar beliefs.</td></tr>
+        <tr><td>\(M_l\)</td><td>Map of type \(U \rightarrow \mathbb{N}\).</td><td>Records how firm a subscriber someone is by logging consecutive hits on semantic neighbours.</td></tr>
+      </tbody>
+    </table>
+
+    <p>For each tree \(t\):</p>
+    <table>
+      <tbody>
+        <tr><td style="width: 200px;">\(T_{t\sim}\)</td><td>List of trees.</td></tr>
+      </tbody>
+    </table>
+
+    <h3 id="AlgorithmDefinitions">Definitions</h3>
+
+    <p>Leaf similarity metric:
+    \[d_{leaf}(l_x, l_y) := H_{l_x, tree(l_y)}(l_y) \cdot avr(H_{l_x, tree(l_y)})^{-1}\]</p>
+
+    <p>Semantic relatives of \(l\):
+    \[R_l := \big\{k : \exists t \in T \wedge k \in t \wedge t \sim tree(l)\big\}\]
+    \[\hat{R_l} := sort_{p_1, desc}\Big(\big\langle \big(p_0, p_1\big) := \big(k, d_{leaf}(l, k)\big) : k \in R_l\big\rangle\Big)\]</p>
+
+    <p>Subscribers of leaf \(l\):
+    \[U_{sub(l)}:=U_l \setminus \{u : \exists k \in L_{u,l+} \wedge k\in L_{l\not\sim}\}\]
+    where \(L_{u,l+}\) is the list of leaves visited by \(u\) since their last visit to \(l\):
+    \[L_{u,l+} := \big\langle s.l : \exists a \in \mathbb{N} \wedge s \in (a, +\infty] \subset S_u \wedge S_u[a] = k \wedge S_u[a] \not\in [0, a) \subset S_u \big\rangle\]
+    </p>
+
+    <p>User consistency:
+    \[c(u) := \frac{1}{2}\big(1+(\beta_u - \alpha_u)(\alpha_u + \beta_u)^{-1}\big) \cdot \big(1-\gamma(|S_{u=u}| + \gamma)^{-1}\big)\]
+    </p>
+
+    <p>All the trees user \(u\) has visited since their last visit to leaf \(l\):
+    \[T_{u, l+} := \big\langle s.t : \exists a \in \mathbb{N} \wedge s \in (a, +\infty] \subset S_u \wedge S_u[a] = k \wedge S_u[a] \not\in [0, a) \subset S_u \big\rangle\]</p>
+
+    <h3 id="AlgorithmProcedure">Procedure</h3>
+
+    <table>
+    <tbody>
+    <tr><td style="width: 40px;">1.</td><td style="width: 260px;">When a user \(u\) lands on leaf \(l\)</td><td></td></tr>
+    <tr><td>2.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(M_l \leftarrow (u, +\,1)\)</td><td></td></tr>
+    <tr><td>3.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;For each \(k \in R_l\)</td><td>// All semantic relatives of \(l\) that \(u\) has previously visited have their histograms \(H_{k,t}\) updated.</td></tr>
+    <tr><td>4.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;If \(u \in U_{sub(k)}\)</td><td></td></tr>
+    <tr><td>5.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(H_{k, tree(l)} \leftarrow l\)</td><td></td></tr>
+    <tr><td>6.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;If \(l \in L_{k\not\sim}\)</td><td>// When user lands on leaf to which \(l\) is dissimilar, intervening traversals are logged.</td></tr>
+    <tr><td>7.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;For each \(t \in T_{u,k+}\)</td><td></td></tr>
+    <tr><td>8.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(J_k \leftarrow \big(t, +\,c(u)\cdot \hat M_k(u)\big)\)</td><td></td></tr>
+    <tr><td>9.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(M_k \leftarrow_{erase} u\)</td><td></td></tr>
+    <tr><td>10.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(\alpha_u\leftarrow\alpha_u+1\)</td><td></td></tr>
+    <tr><td>11.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;Else if \(l \in L_{k\sim}\)</td><td>// When user lands on leaf to which \(l\) is similar, intervening traversals are logged.</td></tr>
+    <tr><td>12.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;For each \(t \in T_{u,k+}\)</td><td></td></tr>
+    <tr><td>13.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(K_k \leftarrow \big(t, +\,c(u)\cdot \hat M_k(u)\big)\)</td><td></td></tr>
+    <tr><td>14.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(M_k \leftarrow (u, +\,1)\)</td><td></td></tr>
+    <tr><td>15.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(\beta_u\leftarrow\beta_u+1\)</td><td></td></tr>
+    <tr style="height: 30px;"><td></td><td></td><td></td></tr>
+    </tbody>
+    </table>
+    <table>
+    <tbody>
+    <tr><td style="width: 40px;">16.</td><td>For each \(l \in L\)</td><td></td></tr>
+    <tr><td>17.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(children\big(tree(l)\big)_l=arg\,max_{t \in J_l}\big(score(l, t)\big)\)</td><td></td></tr>
+    <tr style="height: 30px;"><td></td><td></td><td></td></tr>
+    <tr><td>18.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(L_{l\sim} := \big\{\hat{R_l}[i]_0 : \big(0 \leq i \lt cap(L_{l\sim})\big) \wedge \hat{R_l}[i]_1 \geq \lambda_1\big\}\)</td><td></td></tr>
+    <tr><td>19.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(L_{l\not\sim} := \big\{\hat{R_l}[i]_0 : \big(|\hat{R_l}| - cap(L_{l\sim}) \leq i \lt |\hat{R_l}|\big) \wedge \hat{R_l}[i]_1 \lt \lambda_0\big\}\)</td><td></td></tr>
+    <tr style="height: 30px;"><td></td><td></td><td></td></tr>
+    <tr><td>20.</td><td>For each \(t \in T\)</td><td></td></tr>
+    <tr><td>21.</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(T_{t\sim} := \big[0, cap(T_{t\sim})\big) \subseteq sort_{desc}\big(\langle y : y\in T \wedge d_{tree}(t, y) \geq \tau \rangle\big)\)</td><td></td></tr>
+    </tbody>
+    </table>
+
+    <h3 id="AlgorithmExample">Example</h3>
+
+    <p>In the graph below, similarity between trees is represented by a thick grey line, similarity between leaves by a green line, and dissimilarity between leaves by a red line. In reality, this similarity graph will likely be very highly connected, i.e. the ratio of edges to nodes will be large.</p>
+
+    <img alt="Similarity Graph" src="fig2.png"/>
+
+    <p>Here is a dry run of the algorithm for a single user \(u\) traversing the path \(I_c \rightarrow G_b \rightarrow F_d \rightarrow A_e \rightarrow B_b \rightarrow C_a \rightarrow G_d \rightarrow J_f \rightarrow K_b\).</p>
+
+    <table>
+      <tbody>
+      <tr><td style="width: 30px;">1</td><td style="width: 220px;">\(I_c\)</td><td>User lands on leaf \(I_c\)</td></tr>
+      <tr><td>2</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(L_u \cap R_{I_c} = \emptyset\)</td><td>User has not yet visited any leaves in \(R_{I_c}\)</td></tr>
+      <tr><td>5</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(L_{I_c\not\sim} = \emptyset\)</td><td>Leaf has no semantic anti-neighbours</td></tr>
+      <tr><td>9</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(G_b \in L_{I_c\sim}\)</td><td>Leaf \(G_b\) is a semantic neighbour of \(I_c\)</td></tr>
+      <tr><td>10</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(T_{u, G_b+} = \emptyset\)</td><td>User has never landed on \(G_b\)</td></tr>
+      <tr><td>9</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(J_e \in L_{I_c\sim}\)</td><td>Leaf \(J_e\) is a semantic neighbour of \(I_c\)</td></tr>
+      <tr><td>10</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(T_{u, J_e+} = \emptyset\)</td><td>User has never landed on \(J_e\)</td></tr>
+      <tr><td>1</td><td>\(G_b\)</td><td>User lands on leaf \(G_b\)</td></tr>
+      <tr><td>2</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(H_{I_c, G} \leftarrow G_c\)</td><td>Log this hit in the \(H\) map for semantic relative \(I_c\)</td></tr>
+      <tr><td>5</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(L_{G_b\not\sim} = \emptyset\)</td><td>Leaf has no semantic anti-neighbours</td></tr>
+      <tr><td>9</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(I_c \in L_{G_b\sim}\)</td><td>Leaf \(I_c\) is a semantic neighbour of \(G_b\)</td></tr>
+      <tr><td>11</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(K_{I_c} \leftarrow \big(G, +c(u)\big)\)</td><td>User has traversed \(G\) since last landing on \(I_c\)</td></tr>
+      <tr><td>11</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(K_{I_c} \leftarrow \big(G, +c(u)\big)\)</td><td>User has traversed \(G\) since last landing on \(I_c\)</td></tr>
+      <tr><td>12</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(\beta_u\leftarrow\beta_u+2\)</td><td>User has made \(2\) additions to a \(K\) map</td></tr>
+      <tr><td>9</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(J_e \in L_{G_b\sim}\)</td><td>Leaf \(J_e\) is a semantic neighbour of \(G_b\)</td></tr>
+      <tr><td>10</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(T_{u, J_e+} = \emptyset\)</td><td>User has never landed on \(J_e\)</td></tr>
+      <tr><td>1</td><td>\(F_d\)</td><td>User lands on leaf \(F_d\)</td></tr>
+      <tr><td>2</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(H_{G_b, F} \leftarrow F_d\)</td><td>Log this hit in the \(H\) map for semantic relative \(G_b\)</td></tr>
+      <tr><td>5</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(L_{F_d\not\sim} = \emptyset\)</td><td>Leaf has no semantic anti-neighbours</td></tr>
+      <tr><td>9</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(L_{F_d\sim} = \emptyset\)</td><td>Leaf has no semantic neighbours</td></tr>
+      <tr><td>1</td><td>\(A_e\)</td><td>User lands on leaf \(A_e\)</td></tr>
+      <tr><td>2</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(L_u \cap R_{A_e} = \emptyset\)</td><td>User has not yet visited any leaves in \(R_{A_e}\)</td></tr>
+      <tr><td>5</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(B_b \in L_{A_e\not\sim}\)</td><td>Leaf \(B_b\) is a semantic anti-neighbour of \(A_e\)</td></tr>
+      <tr><td>6</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(T_{u, B_b+} = \emptyset\)</td><td>User has never landed on \(B_b\)</td></tr>
+      <tr><td>9</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(L_{A_e\sim} = \emptyset\)</td><td>Leaf has no semantic neighbours</td></tr>
+      <tr><td>1</td><td>\(B_b\)</td><td>User lands on leaf \(B_b\)</td></tr>
+      <tr><td>2</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(H_{A_e, B} \leftarrow B_b\)</td><td>Log this hit in the \(H\) map for semantic relative \(A_e\)</td></tr>
+      <tr><td>5</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(A_e \in L_{B_b\not\sim}\)</td><td>Leaf \(A_e\) is a semantic anti-neighbour of \(B_b\)</td></tr>
+      <tr><td>7</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(J_{A_e} \leftarrow \big(B, +c(u)\big)\)</td><td>User has traversed \(B\) since landing on \(A_e\)</td></tr>
+      <tr><td>8</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(\alpha_u\leftarrow\alpha_u+1\)</td><td>User has made \(1\) addition to a \(J\) map</td></tr>
+      <tr><td>9</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(L_{B_b\sim} = \emptyset\)</td><td>Leaf has no semantic neighbours</td></tr>
+      <tr><td>1</td><td>\(C_a\)</td><td>User lands on leaf \(C_a\)</td></tr>
+      <tr><td>2</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(L_u \cap R_{C_a} = \emptyset\)</td><td>User has not yet visited any leaves in \(R_{C_a}\)</td></tr>
+      <tr><td>5</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(L_{C_a\not\sim} = \emptyset\)</td><td>Leaf has no semantic anti-neighbours</td></tr>
+      <tr><td>9</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(L_{C_a\sim} = \emptyset\)</td><td>Leaf has no semantic neighbours</td></tr>
+      <tr><td>1</td><td>\(G_d\)</td><td>User lands on leaf \(G_d\)</td></tr>
+      <tr><td>2</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(H_{I_c, G} \leftarrow G_d\)</td><td>Log this hit in the \(H\) map for semantic relative \(I_c\)</td></tr>
+      <tr><td>2</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(H_{F_d, G} \leftarrow G_d\)</td><td>Log this hit in the \(H\) map for semantic relative \(F_d\)</td></tr>
+      <tr><td>5</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(L_{G_d\not\sim} = \emptyset\)</td><td>Leaf has no semantic anti-neighbours</td></tr>
+      <tr><td>9</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(L_{G_d\sim} = \emptyset\)</td><td>Leaf has no semantic neighbours</td></tr>
+      <tr><td>1</td><td>\(J_f\)</td><td>User lands on leaf \(J_f\)</td></tr>
+      <tr><td>2</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(H_{I_c, J} \leftarrow J_f\)</td><td>Log this hit in the \(H\) map for semantic relative \(I_c\)</td></tr>
+      <tr><td>2</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(H_{G_b, J} \leftarrow J_f\)</td><td>Log this hit in the \(H\) map for semantic relative \(G_b\)</td></tr>
+      <tr><td>2</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(H_{G_d, J} \leftarrow J_f\)</td><td>Log this hit in the \(H\) map for semantic relative \(G_d\)</td></tr>
+      <tr><td>5</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(I_c \in L_{J_f\not\sim}\)</td><td>Leaf \(I_c\) is a semantic anti-neighbour of \(J_f\)</td></tr>
+      <tr><td>7</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(J_{I_c} \leftarrow \big(G, +2\cdot c(u)\big)\)</td><td>User has traversed \(G\) twice since last landing on \(I_c\)</td></tr>
+      <tr><td>7</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(J_{I_c} \leftarrow \big(J, +c(u)\big)\)</td><td>User has traversed \(J\) since last landing on \(I_c\)</td></tr>
+      <tr><td>8</td><td>&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;&#xA0;\(\alpha_u\leftarrow\alpha_u+2\)</td><td>User has made \(2\) additions to a \(J\) map</td></tr>
+      <tr><td>9</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(L_{J_f\sim} = \emptyset\)</td><td>Leaf has no semantic neighbours</td></tr>
+      <tr><td>1</td><td>\(K_b\)</td><td>User lands on leaf \(K_b\)</td></tr>
+      <tr><td>2</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(H_{G_b, J} \leftarrow K_b\)</td><td>Log this hit in the \(H\) map for semantic relative \(G_b\)</td></tr>
+      <tr><td>2</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(H_{G_d, J} \leftarrow K_b\)</td><td>Log this hit in the \(H\) map for semantic relative \(G_d\)</td></tr>
+      <tr><td>2</td><td>&#xA0;&#xA0;&#xA0;&#xA0;\(H_{F_d, J} \leftarrow K_b\)</td><td>Log this hit in the \(H\) map for semantic relative \(F_d\)</td></tr>
+      <tr><td>&#xA0;&#xA0;&#xA0;&#xA0;</td><td></td><td></td></tr>
+    </tbody>
+    </table>
+
+    <h2 id="Analysis">Analysis</h2>
+
+    <p>...</p>
+
+    <h3 id="AnalysisTrafficModelling">Traffic Modelling</h3>
+
+    <p>...</p>
+
+    <h3 id="AnalysisConvergenceTesting">Convergence Testing</h3>
+
+    <p>...</p>
+
+    <h2 id="Implementation">Implementation</h2>
+
+    <h3 id="ImplementationRelationalModel">Relational Model</h3>
+
+    <p>We extend the conventional algebra with an additional MODIFY operation represented by the letter \(\Large\mu\).</p>
+
+    <p>Tree(<span class="u">treeId</span>)<br/>
+    TreeNeighbours(<span class="u">treeA=Tree.treeId, treeB=Tree.treeId</span>)<br/>
+    TreeTags(<span class="u">treeId=Tree.treeId, tagId=Tag.tagId</span>)<br/>
+    Tag(<span class="u">tagId</span>, string)<br/>
+    Node(<span class="u">nodeId</span>, treeId=Tree.treeId, content)<br/>
+    Edge(<span class="u">nodeA=Node.nodeId, nodeB=Node.nodeId</span>, content)<br/>
+    Leaf(<span class="u">leafId</span>, nodeId=Node.nodeId)<br/>
+    LeafAntiNeighbours(<span class="u">leafId=Leaf.leafId, antiNeighbour=Leaf.leafId</span>)<br/>
+    LeafNeighbours(<span class="u">leafId=Leaf.leafId, neighbour=Leaf.leafId</span>)<br/>
+    LeafSubscriber(<span class="u">leafId=Leaf.leafId, userId=User.userId</span>)<br/>
+    JMap(<span class="u">leafId=Leaf.leafId, treeId=Tree.treeId</span>, score)<br/>
+    KMap(<span class="u">leafId=Leaf.leafId, treeId=Tree.treeId</span>, score)<br/>
+    HMap(<span class="u">leafId=Leaf.leafId, treeId=Tree.treeId</span>, leaf=Leaf.leafId, score)<br/>
+    MMap(<span class="u">leafId=Leaf.leafId, userId=User.userId</span>, score)<br/>
+    User(<span class="u">userId</span>, sessionId, email)<br/>
+    UserHistory(<span class="u">userId=User.userId, leaf=Leaf.leafId</span>)
+    </p>
+
+    <p>\[tree(l) := {\Large\pi}_{attr(Tree)}\big({\Large\sigma}_{leafId=l}(Leaf {\;\Large\Join\;} Node)\big)\]
+    \[attr\big(tree(l)\big) = attr(Tree)\]
+    \[T_{tree(l)\sim} := \bigg({\Large\rho}_{treeId/treeB}\Big({\Large\pi}_{treeB}\big(tree(l) {\;\Large\Join\;}_{treeId=treeA} TreeNeighbours\big)\Big)\bigg) {\;\Large\Join\;} Tree\]
+    \[attr(T_{tree(l)\sim}) = attr(Tree)\]
+    \[R_l := {\Large\pi}_{attr(Leaf)}(Leaf {\;\Large\Join\;} Node {\;\Large\Join\;} T_{tree(l)\sim})\]
+    \[attr(R_l) = attr(Leaf)\]
+    \[H_{k\in R_l,tree(l)} := {\Large\pi}_{attr(HMap)}\Big({\Large\sigma}_{userId=u}\big(R_l {\;\Large\Join\;} LeafSubscribers {\;\Large\Join\;} HMap {\;\Large\Join\;} tree(l)\big)\Big)\]
+    \[attr(H_{k\in R_l,tree(l)}) = attr(HMap)\]
+    </p>
+
+    <p>User with \(userId=u\) lands on leaf with \(leafId=l\):<br/>
+    \[{\Large\mu}_{score\leftarrow score + 1}\Bigg({\Large\pi}_{attr(HMap)}\Big({\Large\sigma}_{userId=u}\big(R_l {\;\Large\Join\;} LeafSubscribers {\;\Large\Join\;} HMap {\;\Large\Join\;} tree(l)\big)\Big)\Bigg)\]
+    \[{\Large\delta}_{userId=u}\Big({\Large\pi}_{attr(MMap)}\big({\Large\sigma}_{antiNeighbour=l}(R_l {\;\Large\Join\;} LeafAntiNeighbours {\;\Large\Join\;} MMap)\big)\Big)\]
+    </p>
+  </body>
+</html>
+
